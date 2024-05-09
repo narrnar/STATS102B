@@ -1,0 +1,493 @@
+---
+title: "102b_hw02_Daren_Sathasivam"
+author: "Daren Sathasivam"
+date: "2024-04-14"
+output: pdf_document
+---
+```{r setup, include=FALSE}
+# From stackexchange
+library(formatR)
+knitr::opts_chunk$set(tidy.opts = list(width.cutoff = 60), tidy = TRUE)
+```
+
+
+# Problem 1: Recall Problem 1 in Homework 1
+## Use the code from Homework 1 to simulate data from a bivariate normal distribution with mean vector $\mu = [0, 0]$ and correlation matrix $R = \begin{bmatrix} 1 & r \\ r & 1 \end{bmatrix}$
+### 1. Sample size $n \epsilon \{ 50, 200\}$ and correlation coefficient r = 0
+```{r}
+library(MASS)
+set.seed(1)
+mu <- c(0, 0)
+sample_size <- c(50, 200)
+# cor_coef <- c(0, 0.5, 0.85)
+
+sim_data <- function(r, mu, sample_size) {
+  for (n in sample_size) {
+    Sigma <- matrix(c(1, r, r, 1), 2, 2)
+    data <- mvrnorm(n = n, mu = mu, Sigma = Sigma)
+    corr_coef <- cor(data[, 1], data[, 2])
+    cat("Sample size: ", n, "Correlation coefficient: ", r, "Empirical Correlation: ", corr_coef, "\n")
+    print(tail(data, 5)) # Print tail to show that the sample size is correct
+  }
+}
+
+# Set correlation coefficient to 0
+r <- 0
+sim_data(r, mu, sample_size)
+```
+
+### 2. Sample size $n \epsilon \{50, 200\}$ and correlation coefficient r = 0.5
+```{r}
+set.seed(1)
+# Set correlation coefficient to 0.5
+r <- 0.5
+sim_data(r, mu, sample_size)
+```
+
+### 3. Sample size $n \epsilon \{50, 200\}$ and correlation coefficient r = 0.85
+```{r}
+set.seed(1)
+# Set correlation coefficient to 0.85
+r <- 0.85
+sim_data(r, mu, sample_size)
+```
+
+Obtain the following Bootstrap Confidence Intervals for the correlation coefficient r for the three cases: \
+
+### 1. Normal Bootstrap CI
+```{r, fig.show = "hold", out.width = "50%"}
+# Load in helper functions provided from bruinlearn
+source("bootsample.R")
+source("bootstats.R")
+
+set.seed(1)
+mu <- c(0, 0)
+sample_size <- c(50, 200)
+correlation_coeff <- c(0, 0.5, 0.85)
+B <- 5000
+
+# Function to calculate the correlation coefficient
+cor_fun <- function(data) {
+  cor(data[, 1], data[, 2])
+}
+# Function to perform bootstrap and calculate Normal CI
+bs_normal_ci <- function(r, n, B) {
+  Sigma <- matrix(c(1, r, r, 1), 2, 2)
+  data <- mvrnorm(n = n, mu = mu, Sigma = Sigma)
+  
+  # Perform the bootstrap using custom bootsampling function
+  bootstrap_samples <- bootsampling(data, B)
+  # Calculate statistics using custom boot.stats function
+  boot_results <- boot.stats(bootstrap_samples, cor_fun)
+  # Calculate Normal CI
+  alpha <- 0.05
+  zval <- qnorm(1 - alpha / 2)  # Z-value for 95% CI
+  boot_mean <- mean(boot_results$theta)
+  boot_se <- boot_results$se
+  
+  normal_ci <- c(boot_mean - zval * boot_se, boot_mean + zval * boot_se)
+  lower_ci <- normal_ci[1]
+  upper_ci <- normal_ci[2]
+  # Adjust histogram limits dynamically
+  plot_range <- range(boot_results$theta)
+  xlim_adjusted <- mean(plot_range) + c(-1, 1) * diff(plot_range) / 2
+  hist_data <- hist(boot_results$theta, breaks = 35, plot = FALSE)
+  ylim_max <- max(hist_data$density) * 1.1
+  
+  # Plot histogram
+  hist(boot_results$theta, breaks = 35, freq = FALSE, xlim = xlim_adjusted, ylim = c(0, ylim_max),
+         main = paste("Normal Bootstrap Distribution: B =", B, "; r = ", r, "; n = ", n),
+         xlab = "Sample Correlation Coefficient", ylab = "Density")
+    abline(v = c(lower_ci, upper_ci), col = "red", lwd = 2, lty = 2)  # Add CI lines
+  return(normal_ci)
+}
+
+# Run CI calculations for each scenario
+for (r in correlation_coeff) {
+  for (n in sample_size) {
+    normal_ci <- bs_normal_ci(r, n, B)
+    print(paste("Normal CIs for r = ", r, "and n =", n, ":"))
+    print(normal_ci)
+  }
+}
+```
+
+### 2. Basic Bootstrap CI
+```{r, fig.show = "hold", out.width = "50%"}
+bs_basic_ci <- function(r, n, B) {
+  Sigma <- matrix(c(1, r, r, 1), 2, 2)
+  data <- mvrnorm(n = n, mu = mu, Sigma = Sigma)
+  
+  # Perform bootstrap
+  bootstrap_samples <- bootsampling(data, B)
+  boot_results <- boot.stats(bootstrap_samples, cor_fun)
+  # Calculate Basic CI
+  alpha <- 0.05
+  original_estimate <- cor_fun(data)
+  lower_ci <- 2 * original_estimate - quantile(boot_results$theta, probs =  1 - alpha / 2)
+  upper_ci <- 2 * original_estimate - quantile(boot_results$theta, probs = alpha / 2)
+  
+  # Adjust histogram limits dynamically
+  plot_range <- range(boot_results$theta)
+  xlim_adjusted <- mean(plot_range) + c(-1, 1) * diff(plot_range) / 2
+  hist_data <- hist(boot_results$theta, breaks = 35, plot = FALSE)
+  ylim_max <- max(hist_data$density) * 1.1
+  
+  # Plot histogram
+  hist(boot_results$theta, breaks = 35, freq = FALSE, xlim = xlim_adjusted, ylim = c(0, ylim_max),
+         main = paste("Basic Bootstrap Distribution: B =", B, "; r = ", r, "; n = ", n),
+         xlab = "Sample Correlation Coefficient", ylab = "Density")
+    abline(v = c(lower_ci, upper_ci), col = "red", lwd = 2, lty = 2)  # Add CI lines
+    return(c(lower_ci, upper_ci))
+}
+
+# Run CI calculations for each scenario
+for (r in correlation_coeff) {
+  for (n in sample_size) {
+    basic_ci <- bs_basic_ci(r, n, B)
+    print(paste("Basic CIs for r = ", r, "and n =", n, ":"))
+    print(basic_ci)
+  }
+}
+```
+
+### 3. Precentile Bootstrap CI
+```{r, fig.show = "hold", out.width = "50%"}
+bs_percentile_ci <- function(r, n, B) {
+  Sigma <- matrix(c(1, r, r, 1), 2, 2)
+  data <- mvrnorm(n = n, mu = mu, Sigma = Sigma)
+  
+  # Perform bootstrap
+  bootstrap_samples <- bootsampling(data, B)
+  boot_results <- boot.stats(bootstrap_samples, cor_fun)
+  
+  # Calculate Percentile CI
+  alpha <- 0.05
+  # percentile.CI=rbind(percentile.CI,cbind(quantile(x.mean$theta,probs=(alpha/2)), quantile(x.mean$theta,probs=(1-alpha/2))))
+  lower_ci <- quantile(boot_results$theta, probs = alpha / 2)
+  upper_ci <- quantile(boot_results$theta, probs = 1 - alpha / 2)
+  
+  # Adjust histogram limits dynamically
+  plot_range <- range(boot_results$theta)
+  xlim_adjusted <- mean(plot_range) + c(-1, 1) * diff(plot_range) / 2
+  hist_data <- hist(boot_results$theta, breaks = 35, plot = FALSE)
+  ylim_max <- max(hist_data$density) * 1.1
+  
+  # Plot histogram
+  hist(boot_results$theta, breaks = 35, freq = FALSE, xlim = xlim_adjusted, ylim = c(0, ylim_max),
+         main = paste("Percentile Bootstrap Distribution: B =", B, "; r = ", r, "; n = ", n),
+         xlab = "Sample Correlation Coefficient", ylab = "Density")
+    abline(v = c(lower_ci, upper_ci), col = "red", lwd = 2, lty = 2)  # Add CI lines
+    return(c(lower_ci, upper_ci))
+}
+
+# Run CI calculations for each scenario
+for (r in correlation_coeff) {
+  for (n in sample_size) {
+    percentile_ci <- bs_percentile_ci(r, n, B)
+    print(paste("Percentile CIs for r = ", r, "and n =", n, ":"))
+    print(percentile_ci)
+  }
+}
+```
+
+Calculate the length and the shape of each type of Bootstrap CI and report: \
+```{r}
+set.seed(1)
+mu <- c(0, 0)
+sample_size <- c(50, 200)
+correlation_coeff <- c(0, 0.5, 0.85)
+B <- 5000
+pdf(NULL) # So graphs don't display when running function
+for (r in correlation_coeff) {
+  for (n in sample_size) {
+    # Calculate Normal CI and its length
+    normal_ci <- bs_normal_ci(r, n, B)
+    normal_length <- normal_ci[2] - normal_ci[1]
+    normal_midpoint <- mean(normal_ci)
+
+    # Calculate Basic CI and its length
+    basic_ci <- bs_basic_ci(r, n, B)
+    basic_length <- basic_ci[2] - basic_ci[1]
+    basic_midpoint <- mean(basic_ci)
+
+    # Calculate Percentile CI and its length
+    percentile_ci <- bs_percentile_ci(r, n, B)
+    percentile_length <- percentile_ci[2] - percentile_ci[1]
+    percentile_midpoint <- mean(percentile_ci)
+
+    # Print results
+    cat(paste("For r =", r, "and n =", n, ":\n"))
+    cat(paste("  Normal CI Length:", normal_length, "Midpoint:", normal_midpoint, "\n"))
+    cat(paste("  Basic CI Length:", basic_length, "Midpoint:", basic_midpoint, "\n"))
+    cat(paste("  Percentile CI Length:", percentile_length, "Midpoint:", percentile_midpoint, "\n\n"))
+  }
+}
+dev.off() 
+```
+- Normal Bootstrap CI: displays consistent midpoints close to the true correlation coefficient values, especially at higher sample sizes which indicates good adherence to the normality assumption in the bootstrap distribution. 
+- Basic Bootstrap CI: displays greater variability in its midpoints, reflecting its non-parametric nature and sensitivity to skewness which indicates the versatility but less stable nature. 
+- Percentile Bootstrap CI: displays midpoints that closely align with true values in larger samples, indicating it effectively captures the central tendency of the distribution with less sensisivity to outliers in comparison to the other methods. 
+
+Discuss how you selected the number of bootstrap replicates B: \
+**Hint:** The results for the population median in the Lectures of Week 3 provide good guidance onw hat is an appropriate B. \
+- I chose 5000 bootstrap replications as it strikes a good balance between efficiency and accuracy as seen by the output of various population medians in lecture. This value ensures that the confidence intervals and other derived statistics are both reliable and computationally feasible to calculate. 
+
+Comment on the results; in particular how the various bootstrap CI behave as a function of the sample size n, and the value of the correlation coefficient r. \
+- In relation to how the various bootstrap CI behave as a function of sample size n, it is observed that they affect confidence interval length and convergence. Larger sample sizes tend to provide more accurate results for the length of confidence interval as they provide more information and provide a convergence towards the true correlation coefficient. Additionally, the correlation coefficient r has an impact on the length of confidence interval as r = 0, the length is much broader whereas r = 0.85 provides a smaller confidence interval length. 
+
+
+# Problem 2:
+```{r}
+library(MASS)
+data(cats)
+summary(cats)
+# BWT in kg and HWT in g of 47F and 97M cats
+
+# F/M Body Weight Data
+female_bwt <- cats$Bwt[cats$Sex == "F"] # 47 obs
+male_bwt <- cats$Bwt[cats$Sex == "M"] # 97 obs
+# F/M Heart Weight Data
+female_hwt <- cats$Hwt[cats$Sex == "F"] # 47 obs
+male_hwt <- cats$Hwt[cats$Sex == "M"] # 97 obs
+```
+
+
+## Part (a):
+
+Construct the following bootstrap CI for the **difference of the body weight means** between female and male cats. \
+
+### 1. Normal Bootstrap CI
+```{r}
+set.seed(1)
+# Number of bootstrap replicates
+B <- 5000
+# Function to perform bootstrap sampling and calculate mean differences
+bootstrap_mean_diff <- function(f_data, m_data, B) {
+  mean_diffs <- rep(NA, B)
+  # Iterate through number of bootstrap replicates
+  for (i in seq_along(mean_diffs)) {
+    f_sample <- sample(f_data, replace = TRUE)
+    m_sample <- sample(m_data, replace = TRUE)
+    mean_diffs[i] <- mean(f_sample) - mean(m_sample)
+  }
+  mean_diffs
+}
+# Perform bootstrap sampling
+bwt_diffs <- bootstrap_mean_diff(female_bwt, male_bwt, B)
+
+# Calculate Normal Bootstrap CI
+alpha <- 0.05
+z_value <- qnorm(1 - alpha / 2)
+mean_diff <- mean(bwt_diffs)
+sd_diff <- sd(bwt_diffs)
+normal_lower <- mean_diff - z_value * sd_diff
+normal_upper <- mean_diff + z_value * sd_diff
+# Plot bootstrap sampling distribution
+hist(bwt_diffs, breaks = 40, main = "Bootstrap Sampling Distribution of Mean Body Weight Difference (F-M)",
+     xlab = "Mean Difference in Body Weight (kg)", ylab = "Frequency", xlim = c(mean_diff - 3*sd_diff, mean_diff + 3*sd_diff))
+abline(v = c(normal_lower, normal_upper), col = "red", lwd = 2, lty = 2)
+
+
+# Print normal bootstrap CI results
+cat("Normal Bootstrap CI for the difference in mean body weight (female - male): \n[", normal_lower, ",", normal_upper,"] \nNormal Bootstrap CI Length: ", normal_upper - normal_lower, "\n")
+```
+
+### 2. Basic Bootstrap CI
+```{r}
+# Calculate Basic Bootstrap CI:
+alpha <- 0.05
+z_value <- qnorm(1 - alpha / 2)
+mean_diff <- mean(bwt_diffs)
+sd_diff <- sd(bwt_diffs)
+
+basic_lower <- 2 * mean(bwt_diffs) - quantile(bwt_diffs, 1 - alpha / 2)
+basic_upper <- 2 * mean(bwt_diffs) - quantile(bwt_diffs, alpha / 2)
+
+cat("Basic Bootstrap CI for the difference in mean body weight (female - male): \n[", basic_lower, ",", basic_upper, "] \nBasic Bootstrap CI Length: ", basic_upper - basic_lower, "\n")
+```
+
+### 3. Percentile Bootstrap CI
+```{r}
+# Calculate Percentile Bootstrap CI:
+alpha <- 0.05
+z_value <- qnorm(1 - alpha / 2)
+mean_diff <- mean(bwt_diffs)
+sd_diff <- sd(bwt_diffs)
+
+percentile_lower <- quantile(bwt_diffs, alpha / 2)
+percentile_upper <- quantile(bwt_diffs, 1 - alpha / 2)
+
+cat("Percentile Bootstrap CI for the difference in mean body weight (female - male): \n[", percentile_lower, ",", percentile_upper, "] \nPercentile Bootstrap CI Length: ", percentile_upper - percentile_lower, "\n")
+```
+
+Calculate the length and shape of each type of Bootstrap CI and report them as well. \
+- For Normal Bootstrap CI Length, we obtain 0.2398875 whereas Basic and Percentile obtain a length of 0.2408955. We can observe that all three bootstrap methods result in similar confidence interval lengths, indicating that choice of method may not significantly affect conclusions drawn from the data under these conditions. Similarly, all three methods reflect a similar distribution shape and variability.
+
+Discuss how you selected the number of bootstrap replicates B: \
+- I chose 5000 bootstrap replicates as it offers a good balance between computational efficiency and accuracy in comparison to replicates that are too small or too large. 
+
+## Part (b)
+Using code from Problem 1 above to construct the following bootstrap CI for the **correlation coefficient between the body weight and heart weight** of female cats:
+
+```{r, echo = FALSE}
+library(boot)
+set.seed(1)
+### --- Just for graph(outside of function to display histogram) --- ###
+# Perform the bootstrap for correlation coefficients
+B <- 5000
+female_cats <- cats[cats$Sex == "F", c("Bwt", "Hwt")]
+# Modified cor_fun for female_cats
+cor_fun2 <- function(data, indices) {
+  cor(data[indices, 1], data[indices, 2])
+}
+bootstrap_results <- boot(female_cats, statistic = cor_fun2, R = B)
+# Calculate Normal CI
+alpha <- 0.05
+zval <- qnorm(1 - alpha / 2)
+boot_mean <- mean(bootstrap_results$t)
+boot_sd <- sd(bootstrap_results$t)
+normal_ci_lower <- boot_mean - zval * boot_sd
+normal_ci_upper <- boot_mean + zval * boot_sd
+# Plot the histogram of bootstrap results
+# hist(bootstrap_results$t, breaks = 40, main = "Bootstrap Sampling Distribution of Correlation Coefficient",
+#      xlab = "Correlation Coefficient", ylab = "Frequency", col = "lightpink")
+# abline(v = normal_ci_lower, col = "red", lwd = 2, lty = 2)
+# abline(v = normal_ci_upper, col = "red", lwd = 2, lty = 2)
+```
+
+
+### 1. Normal Bootstrap CI
+```{r}
+set.seed(1)
+# Number of Bootstrap replicates
+B <- 5000
+# Data for all female cats
+female_cats <- cats[cats$Sex == "F", ]
+# Function to perform normal bootstrap CI
+bs_normal_cor_ci <- function(data, B) {
+  # Perform bootstrap
+  bootstrap_results <- boot(data[, c("Bwt", "Hwt")], statistic = cor_fun2, R = B)
+  # Calculate Normal CI
+  alpha <- 0.05
+  zval <- qnorm(1 - alpha / 2)
+  boot_mean <- mean(bootstrap_results$t)
+  boot_sd <- sd(bootstrap_results$t)
+  
+  normal_ci <- c(boot_mean - zval * boot_sd, boot_mean + zval * boot_sd)
+  return(normal_ci)
+}
+# Calculate Normal Bootstrap CI
+normal_ci <- bs_normal_cor_ci(female_cats, B)
+
+# Plot the histogram of bootstrap results
+hist(bootstrap_results$t, breaks = 40, main = "Bootstrap Sampling Distribution of Correlation Coefficient",
+     xlab = "Correlation Coefficient", ylab = "Frequency", col = "lightpink")
+abline(v = normal_ci[1], col = "red", lwd = 2, lty = 2)
+abline(v = normal_ci[2], col = "red", lwd = 2, lty = 2)
+
+
+cat("Normal Bootstrap CI for the correlation between body weight and heart weight (female cats): \n[", normal_ci[1], ",", normal_ci[2], "] \nNormal Bootstrap CI Length: ", normal_ci[2] - normal_ci[1], "\n")
+```
+
+### 2. Basic Bootstrap CI
+```{r}
+set.seed(1)
+# Perform the bootstrap for correlation coefficients
+female_cats <- cats[cats$Sex == "F", c("Bwt", "Hwt")]
+# Basic bootstrap CI for correlation
+bs_basic_cor_ci <- function(data, B) {
+  # Perform bootstrap
+  bootstrap_results <- boot(data[, c("Bwt", "Hwt")], statistic = cor_fun2, R = B)
+  # Calculate Basic CI
+  # Calculate Basic CI
+  alpha <- 0.05
+  original_estimate <- mean(bootstrap_results$t)  # Mean of bootstrap estimates as the original estimate
+  lower_ci <- 2 * original_estimate - quantile(bootstrap_results$t, probs = 1 - alpha / 2)
+  upper_ci <- 2 * original_estimate - quantile(bootstrap_results$t, probs = alpha / 2)
+  
+  return(c(lower_ci, upper_ci))
+}
+# Calculate Basic Bootstrap CI
+basic_ci <- bs_basic_cor_ci(female_cats, B)
+
+# Plot the histogram of bootstrap results
+hist(bootstrap_results$t, breaks = 40, main = "Bootstrap Sampling Distribution of Correlation Coefficient",
+     xlab = "Correlation Coefficient", ylab = "Frequency", col = "lightpink")
+abline(v = basic_ci[1], col = "red", lwd = 2, lty = 2)
+abline(v = basic_ci[2], col = "red", lwd = 2, lty = 2)
+
+cat("Basic Bootstrap CI for the correlation between body weight and heart weight (female cats): \n[", basic_ci[1], ",", basic_ci[2], "] \nBasic Bootstrap CI Length: ", basic_ci[2] - basic_ci[1], "\n")
+```
+
+### 3. Percentile Bootstrap CI
+```{r}
+set.seed(1)
+# Perform the bootstrap for correlation coefficients
+female_cats <- cats[cats$Sex == "F", c("Bwt", "Hwt")]
+# Percentile bootstrap CI for correlation function
+bs_percentile_cor_ci <- function(data, B) {
+  # Perform bootstrap
+  bootstrap_results <- boot(data, statistic = cor_fun2, R = B)
+  # Calculate Percentile CI
+  alpha <- 0.05
+  lower_ci <- quantile(bootstrap_results$t, probs = alpha / 2)
+  upper_ci <- quantile(bootstrap_results$t, probs = 1 - alpha / 2)
+  return(c(lower_ci, upper_ci))
+}
+# Calculate Basic Bootstrap CI
+percentile_ci <- bs_percentile_cor_ci(female_cats, B)
+
+# Plot the histogram of bootstrap results
+hist(bootstrap_results$t, breaks = 40, main = "Bootstrap Sampling Distribution of Correlation Coefficient",
+     xlab = "Correlation Coefficient", ylab = "Frequency", col = "lightpink")
+abline(v = percentile_ci[1], col = "red", lwd = 2, lty = 2)
+abline(v = percentile_ci[2], col = "red", lwd = 2, lty = 2)
+
+cat("Percentile Bootstrap CI for the correlation between body weight and heart weight (female cats): \n[", percentile_ci[1], ",", percentile_ci[2], "] \nPercentile Bootstrap CI Length: ", percentile_ci[2] - percentile_ci[1], "\n")
+```
+
+Calculate their length and their shape and report those as well for each type of bootstrap CI. \
+- After calculating the bootstrap sampling distribution of the correlation between body weight and heart weight for female cats, it can be observed that the length of the confidence intervals for all three methods fall roughly around 0.41. Each has a similar shape with a central tendency near 0.57 which can be observed by the histogram. Specifically, the length of Normal CI is 0.4185015, Basic CI is 0.4077918, and Percentile CI is 0.4077918. \
+
+Discuss how you selected the number of bootstrap replicates B and comment on the results. \
+- I selected 5000 as the number of bootstrap replicates so the bootstrap sampling distribution can display an accurate model while aso remaining efficient when computing. 
+
+## Part (c)
+Based on the results in Part(b), what are your conclusions regarding the following two statements:
+```{r}
+# Get data
+female_bwt <- cats$Bwt[cats$Sex == "F"] # 47 obs
+male_bwt <- cats$Bwt[cats$Sex == "M"] # 97 obs
+female_hwt <- cats$Hwt[cats$Sex == "F"] # 47 obs
+male_hwt <- cats$Hwt[cats$Sex == "M"] # 97 obs
+# Observed differences
+obs_diff_bwt <- mean(female_bwt) - mean(male_bwt)
+obs_diff_hwt <- mean(female_hwt) - mean(male_hwt)
+# Perform bootstrap sampling (using problem 2a)
+bwt_diffs <- bootstrap_mean_diff(female_bwt, male_bwt, B)
+hwt_diffs <- bootstrap_mean_diff(female_hwt, male_hwt, B)
+
+# Basic Bootstrap Sampling CI:
+alpha <- 0.05
+z_value <- qnorm(1 - alpha / 2)
+# Use basic bootstrap CI for BWT (use observed mean diff to calculate)
+bwt_basic_lower <- 2 * obs_diff_bwt - quantile(bwt_diffs, 1 - alpha / 2)
+bwt_basic_upper <- 2 * obs_diff_bwt - quantile(bwt_diffs, alpha / 2)
+# For HWT
+hwt_basic_lower <- 2 * obs_diff_hwt - quantile(hwt_diffs, 1 - alpha / 2)
+hwt_basic_upper <- 2 * obs_diff_hwt - quantile(hwt_diffs, alpha / 2)
+
+# Print results
+cat("Bootstrap CI for difference in mean body weight between genders: [", bwt_basic_lower, ",", bwt_basic_upper, "]\n")
+cat("Bootstrap CI for difference in mean heart weight between genders: [", hwt_basic_lower, ",", hwt_basic_upper, "]\n")
+```
+
+
+- The body weight means of female and male cats are equal
+  - Based off of the confidence interval for the difference in mean body weights between females and males([-0.6590524 , -0.420947]), the interval is entirely below zero. This indicates that the mean body weight of males is higher than that of female cats, thus the body weight means of female and male cats are NOT equal.
+- The heart weight means of female and male cats are equal
+  - Similar to body weight, the difference in mean heart weight between females and males([-2.765632 , -1.467682]) is also entirely below zero. This also indicates that the mean heart weight of males is higher than females, thus the heart weight means of female and male cats are NOT equal.
+
+
+
