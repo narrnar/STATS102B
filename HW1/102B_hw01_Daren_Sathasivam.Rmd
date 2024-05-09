@@ -1,0 +1,302 @@
+---
+title: "102B_Daren_Sathasivam_hw01"
+author: "Daren Sathasivam"
+date: "2024-04-07"
+output: pdf_document
+---
+
+```{r}
+source("bootsample.R")
+source("bootstats.R")
+```
+
+
+# Problem 1: 
+Consider the correlation coefficient *r* between two random variables X and Y. Recall that it is a measure of *linear association* between X and Y and takes values in the interal $[-1, 1]$ i.e. $(X, Y) \epsilon[-1,1]$.
+(a.) Write code to simulate data from a *bivariate normal distribution* with mean vector $\mu = [0,0]$ and correlation matrix:
+
+- $R = \begin{bmatrix} 1 & r \\ r & 1 \end{bmatrix}$
+- *Hint*: Use the **mvnorm** function in the R library **MASS**
+```{r}
+library(MASS)
+r <- 0.27
+Sigma <- matrix(c(1, r, r, 1), 2, 2)
+mu <- c(0, 0)
+mvrnorm(n = 5, mu = mu, Sigma = Sigma)
+```
+(b.) Generate the simulated data from a bivariate multivariate normal distribution with mean vector $\mu = [0,0]$ and correlation matrix R for the following cases:
+- 1. Sample size $n \epsilon \{20, 50, 100, 200\}$ and correlation coefficient r = 0
+```{r}
+set.seed(1)
+mu <- c(0, 0)
+r <- 0
+sample_size <- c(20, 50, 100, 200)
+for (n in sample_size) {
+  Sigma <- matrix(c(1, r, r, 1), 2, 2)
+  data <- mvrnorm(n = n, mu = mu, Sigma = Sigma)
+  corr_coef <- cor(data[, 1], data[, 2])
+  cat("Sample size: ", n, "Correlation coefficient: ", r, "\n")
+  print(tail(data, 5)) # Print tail to show that the sample size is correct
+}
+```
+
+- 2. Sample size $n \epsilon \{20, 50, 100, 200\}$ and correlation coefficient r = 0.5
+```{r}
+r <- 0.5
+for (n in sample_size) {
+  Sigma <- matrix(c(1, r, r, 1), 2, 2)
+  data <- mvrnorm(n = n, mu = mu, Sigma = Sigma)
+  corr_coef <- cor(data[, 1], data[, 2])
+  cat("Sample size: ", n, "Correlation coefficient: ", r, "\n")
+  print(tail(data, 5)) # Print tail to show that the sample size is correct
+}
+```
+
+- 3. Sample size $n \epsilon \{20, 50, 100, 200\}$ and correlation coefficient r = 0.85
+```{r}
+r <- 0.85
+for (n in sample_size) {
+  Sigma <- matrix(c(1, r, r, 1), 2, 2)
+  data <- mvrnorm(n = n, mu = mu, Sigma = Sigma)
+  corr_coef <- cor(data[, 1], data[, 2])
+  cat("Sample size: ", n, "Correlation coefficient: ", r, "\n")
+  print(tail(data, 5)) # Print tail to show that the sample size is correct
+}
+```
+
+(c.) Obtain the *bootstrap sampling distribution* of the sample correlation coefficient $\hat r$ for the three cases in part (b.), for the following number of bootstrap replicates $B \epsilon \{200, 1000, 5000, 10000\}$.
+```{r, fig.show = "hold", out.width = "50%"}
+# Initializers
+library(ggplot2)
+mu <- c(0, 0)
+Sigma <- matrix(c(1, r, r, 1), 2, 2)
+cor_coef <- c(0, 0.5, 0.85)
+sample_size <- c(20, 50, 100, 200)
+B_values <- c(200, 1000, 5000, 10000)
+
+# Correlation coefficient function
+cor_fun <- function(data) {
+  cor(data[, 1], data[, 2])
+}
+# Bootstrap sampling function - Referenced "bootsample.R"
+my_bootsampling <- function(data, B) {
+  n <- nrow(data)
+  bootsamples <- replicate(B, {
+    resample <- sample(1:n, n, replace = TRUE)
+    sample_data <- data[resample, ]
+    cor_fun(sample_data)
+  })
+  bootsamples
+}
+
+# Iterate through the different correlation coefficients and sample sizes
+for (r in cor_coef) {
+  Sigma <- matrix(c(1, r, r, 1), 2, 2)
+  for (n in sample_size) {
+    data <- mvrnorm(n = n, mu = mu, Sigma = Sigma)
+    # Iterate through bootstrap replicates
+    for (B in B_values) {
+      bootstrap_samples <- my_bootsampling(data, B)
+      mean_sample <- mean(bootstrap_samples)
+      sd_sample <- sd(bootstrap_samples)
+      p <- ggplot() +
+        geom_histogram(aes(x = bootstrap_samples), bins = 25, fill = "goldenrod", color = "black") +
+        # stat_function(fun = dnorm, args = list(mean = mean_sample, sd = sd_sample), color = "blue") +
+        labs(title = paste("Bootstrap Samplig Distribution (r = ", r, ", n = ", n, ", B = ", B, ")"), x = "Correlation Coefficient", y = "Frequency") + 
+        theme_minimal()
+      print(p)
+    }
+  }
+}
+
+```
+
+- Comment on the results; in particular how the bootstrap sampling distribution behaves as a function of the sample size n, the number of bootstrap replicates B and the value of the correlation coefficient r.
+   - For sample size n, larger sample sizes lead to tighter bootstrap distributions around the true correlation coefficient.
+   - For the number of bootstrap replicates B, increasing the number of bootstrap replicates leads to a smoother and more accurate representation of the sampling distribution. Thus the bootstrap distribution approximates the true sampling distribution of $\hat r$ better. 
+   - For the correlation coefficient r, as r increases, the bootstrap sampling distribution shifts towards the true correlation coefficient value and the variablity decreases. 
+
+
+# Problem 2:
+```{r}
+# Load/Initializers
+library(MASS)
+library(ggplot2)
+data(cats)
+summary(cats)
+# BWT in kg and HWT in g of 47F and 97M cats
+
+# F/M Body Weight Data
+female_bwt <- cats$Bwt[cats$Sex == "F"] # 47 obs
+male_bwt <- cats$Bwt[cats$Sex == "M"] # 97 obs
+# F/M Heart Weight Data
+female_hwt <- cats$Hwt[cats$Sex == "F"] # 47 obs
+male_hwt <- cats$Hwt[cats$Sex == "M"] # 97 obs
+```
+
+### Part(a):
+- Obtain the bootstrap sampling of the difference of sample means for body weight between female and male cats
+```{r}
+# Number of bootstrap replicates
+B <- 5000
+# Function to perform bootstrap sampling and calculate mean differences
+bootstrap_mean_diff <- function(f_data, m_data, B) {
+  mean_diffs <- rep(NA, B)
+  # Iterate through number of bootstrap replicates
+  for (i in seq_along(mean_diffs)) {
+    f_sample <- sample(f_data, replace = TRUE)
+    m_sample <- sample(m_data, replace = TRUE)
+    mean_diffs[i] <- mean(f_sample) - mean(m_sample)
+  }
+  mean_diffs
+}
+# Perform bootstrap sampling
+bwt_diffs <- bootstrap_mean_diff(female_bwt, male_bwt, B)
+summary(bwt_diffs)
+# Plot bootstrap sampling distribution
+hist(bwt_diffs, breaks = 40, main = "Bootstrap Sampling Distribution of mean Body Weight Difference (F-M)",
+     xlab = "Mean Difference in Body Weight(kg)",
+     ylab = "Frequency")
+```
+
+- Obtain the bootstrap sampling distribution of the difference of sample means for heart weight between female and male cats
+```{r}
+# Number of bootstrap replicates
+B <- 5000
+# Perform bootstrap sampling
+hwt_diffs <- bootstrap_mean_diff(female_hwt, male_hwt, B)
+summary(hwt_diffs)
+# Plot bootstrap sampling distribution
+hist(hwt_diffs, breaks = 40, main = "Bootstrap Sampling Distribution of mean Heart Weight Difference (F-M)",
+     xlab = "Mean Difference in Heart Weight(kg)",
+     ylab = "Frequency")
+```
+Explain how many bootstrap replicates you decided to use and comment on the results: \
+- For part a, I decided to use 5000 bootstrap replicates to estimate the sampling distribution of mean body/heart weight between female and male cats. The resulting histogram provides an approximation of how the mean difference in body/heart weight might vary across random sampled from the population. It can be observed in both histograms that the values are centered around a negative value, indicating the larger mean of male weights in comparison to female weights.
+
+### Part(b):
+- Obtain the bootstrap sampling distribution of the t-statistic wen testing for mean differences for body weight between female and male cats
+```{r}
+# Number of bootstrap replicates
+B <- 5000
+# Function to calculate t-statistic
+calc_t_stat <- function (f_data, m_data) {
+  # Values to calculate t-statistic
+  len_f <- length(f_data)
+  len_m <- length(m_data)
+  mean_f <- mean(f_data)
+  mean_m <- mean(m_data)
+  var_f <- var(f_data)
+  var_m <- var(m_data)
+
+  mean_diff <- mean_f - mean_m
+  sqrt_var <- sqrt(var_f / len_f + var_m / len_m)
+  
+  # t_statistic <- (mean(f_data) - mean(m_data)) / (sqrt(var(f_data)/length(f_data) + var(m_data)/length(m_data)))
+  t_statistic <- mean_diff / sqrt_var
+  return(t_statistic)
+}
+# Function to perform bootstrap sampling and calculate t-statistics
+bs_t_stat <- function(f_data, m_data, B) {
+  t_stat <- rep(NA, B)
+  for (i in seq_along(t_stat)) {
+    f_sample <- sample(f_data, replace = TRUE)
+    m_sample <- sample(m_data, replace = TRUE)
+    t_stat[i] <- calc_t_stat(f_sample, m_sample)
+  }
+  t_stat
+}
+# Perform bootstrap sampling
+bwt_t_stat <- bs_t_stat(female_bwt, male_bwt, B)
+summary(bwt_t_stat)
+# Plot bootstrap sampling distribution
+hist(bwt_t_stat, breaks = 40, main = "Bootstrap Sampling Distribution of t-statistic for Body Weight",
+     xlab = "t-statistic",
+     ylab = "Frequency")
+```
+- Obtain the bootstrap sampling distribution of the t-statistic when testing for mean differences for ehart weight between female and male cats
+```{r}
+# Number of bootstrap replicates
+B <- 5000
+# Perform bootstrap sampling
+hwt_t_stat <- bs_t_stat(female_hwt, male_hwt, B)
+summary(hwt_t_stat)
+# Plot bootstrap sampling distribution
+hist(hwt_t_stat, breaks = 40, main = "Bootstrap Sampling Distribution of t-statistic for Heart Weight",
+     xlab = "t-statistic",
+     ylab = "Frequency")
+```
+Exaplain how many bootstrap replicates you decided to use and comment on the results: \
+- For part b, I chose to use the same amount of bootstrap replicates(B = 5000) to estimate the sampling distribution of the t-statistic of the body/heart weight of cats between genders.The resulting histogram provides information about hw the t-statistic may vary across different random samples from the population. We can observe that in both of the sampling distributions, the t-statistic values tends to be negative.
+
+### Part(c):
+Using your code from Problem 1(c):
+- Obtain the bootstrap sampling distribution of the sample correlation coefficient between body weight and heart weight for female cats
+```{r}
+# Function to calculate the correlation coefficient
+cor_fun <- function(data, idx) {
+  sample_data <- data[idx, ]
+  return(cor(sample_data$Bwt, sample_data$Hwt))
+}
+# Function for bootstrap sampling and calculating cor coef
+bs_cor <- function(data, B) {
+  n <- nrow(data)
+  bs_samples <- rep(NA, B)
+  for (i in seq_along(bs_samples)) {
+    idx <- sample(1:n, n, replace = TRUE)
+    bs_samples[i] <- cor_fun(data, idx)
+  }
+  bs_samples
+}
+# Number of bootstrap replications
+B <- 5000
+# Init
+female_data <- cats[cats$Sex == "F", ] # nrow -> 47 obs
+male_data <- cats[cats$Sex == "M", ] # nrow -> 97 obs
+
+# Perform bootstrap sampling for correlation coefficient
+cor_samples_female <- bs_cor(female_data, B)
+summary(cor_samples_female)
+# Plot
+plot_female <- ggplot(data.frame(Correlation = cor_samples_female), aes(x = Correlation)) +
+  geom_histogram(bins = 40, fill = "lightpink", color = "black") +
+  labs(title = "Bootstrap Distribution of Correlation Coefficient for Female Cats", 
+       x = "Sample Correlation Coefficient",
+       y = "Frequency") +
+  theme_minimal()
+print(plot_female)
+```
+- Obtain the bootstrap sampling distribution of the sample correlation coefficient between body weight and heart weight for male cats
+```{r}
+# Perform bootstrap sampling for correlation coefficient
+cor_samples_male <- bs_cor(male_data, B)
+summary(cor_samples_male)
+# Plot
+plot_male <- ggplot(data.frame(Correlation = cor_samples_male), aes(x = Correlation)) +
+  geom_histogram(bins = 40, fill = "skyblue", color = "black") +
+  labs(title = "Bootstrap Distribution of Correlation Coefficient for Male Cats", 
+       x = "Sample Correlation Coefficient",
+       y = "Frequency") +
+  theme_minimal()
+print(plot_male)
+```
+Explain how many bootstrap replicates you decided to use and comment on the results. \
+- For part 2c, I used 5000 bootstrap replicates to estimate the sampling distribution of the sample correlation coefficient between body weight and heart weight for both female and male cats. The resulting histograms for female cats reveal the variability and central tendecy to hover around 0.6. Whereas the male cats central tendency hover around 0.8, indicating a stronger correlation of body weight and heart weight relative to female cats. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
